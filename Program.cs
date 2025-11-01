@@ -35,7 +35,7 @@ var host = builder.Build();
 
 // // Add commands using minimal APIs
 // host.AddSlashCommand("ping", "Ping!", (User usr) => $"Pong! {usr.Username}");
-host.AddUserCommand("info", () =>
+host.AddSlashCommand("info", "",() =>
     $"{State.MessageCorrectionsChecks.Count} uncorrected messages this session\n" +
     $"{State.GoodMantras} good mantras this session");
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
