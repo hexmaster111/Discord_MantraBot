@@ -35,7 +35,9 @@ var host = builder.Build();
 
 // // Add commands using minimal APIs
 // host.AddSlashCommand("ping", "Ping!", (User usr) => $"Pong! {usr.Username}");
-// host.AddUserCommand("Username", (User user) => user.Username);
+host.AddUserCommand("info", () =>
+    $"{State.MessageCorrectionsChecks.Count} uncorrected messages this session\n" +
+    $"{State.GoodMantras} good mantras this session");
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
 
 
@@ -52,6 +54,8 @@ public static class State
     // guildid by message id -> what msg should be
     public static readonly ConcurrentDictionary<ulong, (string shouldBe, ulong fixItMsg)> MessageCorrectionsChecks =
         new();
+
+    public static int GoodMantras = 0;
 
     public const string BondedChannel = "5XXX 🔀 5XXX.";
     public const string GoodCheck = "✅";
@@ -79,12 +83,7 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
     public ValueTask HandleAsync(Message editMsg)
     {
         if (editMsg.Guild == null) return default;
-
-        Console.WriteLine("MessageUpdateHandler");
-        logger.LogInformation($"{editMsg.Id}");
         if (!State.MessageCorrectionsChecks.TryGetValue(editMsg.Id, out var shouldbe)) return default;
-
-
         if (!(editMsg.Guild?.ActiveThreads.TryGetValue(editMsg.ChannelId, out var thread) ?? false)) return default;
 
 
@@ -105,10 +104,10 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         }
 
 
-        BAD_MESSAGE:
+    BAD_MESSAGE:
         return default;
 
-        GOOD_MESSAGE:
+    GOOD_MESSAGE:
         editMsg.AddReactionAsync(State.GoodCheck).Wait();
         editMsg.DeleteAllReactionsForEmojiAsync(State.BadCheck).Wait();
         if (editMsg.Channel != null) editMsg.Channel.DeleteMessageAsync(shouldbe.fixItMsg).Wait();
@@ -150,11 +149,12 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         goto IGNORE_MESSAGE;
 
 
-        GOOD_MESSAGE:
+    GOOD_MESSAGE:
+        State.GoodMantras += 1;
         message.AddReactionAsync(new ReactionEmojiProperties(State.GoodCheck)).Wait();
         return default;
 
-        BAD_MESSAGE:
+    BAD_MESSAGE:
         var setMessage = message
             .ReplyAsync($"<@{message.Author.Id}> Error in mantra.\n" +
                         $"`COMMAND:` Edit message to make correction.\n**Comply And Obey**");
@@ -173,7 +173,7 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         return default;
 
 
-        IGNORE_MESSAGE:
+    IGNORE_MESSAGE:
 
         return default;
     }
