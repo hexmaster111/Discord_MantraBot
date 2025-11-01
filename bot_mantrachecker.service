@@ -1,0 +1,12 @@
+ ; /lib/systemd/system/bot_mantrachecker.service
+
+[Unit]
+Description=My discord bot for doing mantras
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/home/hailey/Discord_MantraBot/start.sh
+
+[Install]
+WantedBy=multi-user.target
