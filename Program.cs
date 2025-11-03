@@ -35,7 +35,7 @@ var host = builder.Build();
 
 // // Add commands using minimal APIs
 // host.AddSlashCommand("ping", "Ping!", (User usr) => $"Pong! {usr.Username}");
-host.AddSlashCommand("info", "Info!",() =>
+host.AddSlashCommand("info", "Info!", () =>
     $"{State.MessageCorrectionsChecks.Count} uncorrected messages this session\n" +
     $"{State.GoodMantras} good mantras this session");
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
@@ -60,6 +60,44 @@ public static class State
     public const string BondedChannel = "5XXX 🔀 5XXX.";
     public const string GoodCheck = "✅";
     public const string BadCheck = "❌";
+
+    public static bool IsChannelNameAnXXXXBlahXXXX(string chname)
+    {
+        if (chname.EndsWith('.'))
+        {
+            chname = chname.TrimEnd('.');
+        }
+
+        if ((chname.StartsWith("5XXX") || chname.StartsWith("XXXX")) &&
+            (chname.EndsWith("5XXX") || chname.EndsWith("XXXX"))
+        && chname.Length > 4)
+        {
+            return true;
+        }
+
+
+        return false;
+    }
+
+    public static bool IsValidXXXXBlahXXXXMessage(string chname, string message)
+    {
+
+        string goal = chname;
+
+        if (chname.StartsWith("5XXX"))
+        {
+            goal = goal.Replace("5XXX", "");
+        }
+        else if (chname.StartsWith("XXXX"))
+        {
+            goal = goal.Replace("XXXX", "");
+        }
+        else return false;
+
+        
+
+        return false;
+    }
 
     public static bool IsValidArrowTwistMantra(string message)
     {
