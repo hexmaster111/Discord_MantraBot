@@ -141,12 +141,12 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
             goto GOOD_MESSAGE;
         }
 
-        if (!message.Content.Contains("@"))
+        if (message.Content.Contains("@"))
         {
-            goto BAD_MESSAGE;
+            goto IGNORE_MESSAGE;
         }
 
-        goto IGNORE_MESSAGE;
+        goto BAD_MESSAGE;
 
 
     GOOD_MESSAGE:
@@ -177,4 +177,5 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
 
         return default;
     }
+
 }
