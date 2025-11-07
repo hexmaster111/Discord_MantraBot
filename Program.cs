@@ -14,6 +14,7 @@ using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
 using NetCord.Hosting.Services.ApplicationCommands;
 using NetCord.Rest;
+using NetCord.Services;
 
 
 var token = File.ReadAllText("DISCORD_TOKEN.txt");
@@ -24,7 +25,7 @@ builder.Services
     .AddDiscordGateway(opt =>
     {
         opt.Token = token;
-        opt.Intents = GatewayIntents.AllNonPrivileged | GatewayIntents.MessageContent;
+        opt.Intents = GatewayIntents.AllNonPrivileged | GatewayIntents.MessageContent | GatewayIntents.GuildUsers;
     })
     .AddGatewayHandlers(typeof(Program).Assembly)
     .AddApplicationCommands();
@@ -35,9 +36,7 @@ var host = builder.Build();
 
 // // Add commands using minimal APIs
 // host.AddSlashCommand("ping", "Ping!", (User usr) => $"Pong! {usr.Username}");
-host.AddSlashCommand("info", "Info!", () =>
-    $"{State.MessageCorrectionsChecks.Count} uncorrected messages this session\n" +
-    $"{State.GoodMantras} good mantras this session");
+// host.AddUserCommand("Username", (User user) => user.Username);
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
 
 
@@ -55,49 +54,10 @@ public static class State
     public static readonly ConcurrentDictionary<ulong, (string shouldBe, ulong fixItMsg)> MessageCorrectionsChecks =
         new();
 
-    public static int GoodMantras = 0;
-
     public const string BondedChannel = "5XXX 🔀 5XXX.";
     public const string GoodCheck = "✅";
     public const string BadCheck = "❌";
-
-    public static bool IsChannelNameAnXXXXBlahXXXX(string chname)
-    {
-        if (chname.EndsWith('.'))
-        {
-            chname = chname.TrimEnd('.');
-        }
-
-        if ((chname.StartsWith("5XXX") || chname.StartsWith("XXXX")) &&
-            (chname.EndsWith("5XXX") || chname.EndsWith("XXXX"))
-        && chname.Length > 4)
-        {
-            return true;
-        }
-
-
-        return false;
-    }
-
-    public static bool IsValidXXXXBlahXXXXMessage(string chname, string message)
-    {
-
-        string goal = chname;
-
-        if (chname.StartsWith("5XXX"))
-        {
-            goal = goal.Replace("5XXX", "");
-        }
-        else if (chname.StartsWith("XXXX"))
-        {
-            goal = goal.Replace("XXXX", "");
-        }
-        else return false;
-
-        
-
-        return false;
-    }
+    public const string XXXXIsGoodForXXXX = "XXXX is good for XXXX";
 
     public static bool IsValidArrowTwistMantra(string message)
     {
@@ -113,6 +73,47 @@ public static class State
 
         return true;
     }
+
+
+    public static readonly ConcurrentDictionary<ulong, ulong> GuildToMyId = new();
+
+    public static ulong? GetMyBotUserIdInThisGuild(Message msg)
+    {
+        if (msg.GuildId == null) return null;
+        if (GuildToMyId.TryGetValue(msg.GuildId.Value, out ulong value)) return value;
+
+        var cli = msg.GetType();
+        var mi = cli.GetMember("_client",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (mi.Length == 0) throw new Exception("Could not get _client member info from Message");
+        var client = (mi[0] as System.Reflection.FieldInfo)?.GetValue(msg) as RestClient;
+        if (client == null) throw new Exception("Could not get RestClient from Message");
+        var currentUserAsync = client.GetCurrentUserAsync();
+        currentUserAsync.Wait();
+        var myId = currentUserAsync.Result.Id;
+        value = myId;
+        GuildToMyId[msg.GuildId.Value] = value;
+
+        return value;
+    }
+
+    public static RestClient? GetRestClient(Message msg)
+    {
+        var cli = msg.GetType();
+        var mi = cli.GetMember("_client",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (mi.Length == 0) throw new Exception("Could not get _client member info from Message");
+        return (mi[0] as System.Reflection.FieldInfo)?.GetValue(msg) as RestClient;
+    }
+
+    public static bool IsValidXXXXIsGoodForXXXXMantra(string messageContent)
+    {
+        var split = messageContent.Split(" is good for ");
+        if (split.Length != 2) return false;
+        if (string.IsNullOrWhiteSpace(split[0]) || string.IsNullOrWhiteSpace(split[1])) return false;
+        if (!int.TryParse(split[0], out _) || !int.TryParse(split[1], out _)) return false;
+        return true;
+    }
 }
 // IGuildThreadCreateGatewayHandler
 
@@ -121,7 +122,11 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
     public ValueTask HandleAsync(Message editMsg)
     {
         if (editMsg.Guild == null) return default;
+
+        logger.LogInformation($"{editMsg.Id}");
         if (!State.MessageCorrectionsChecks.TryGetValue(editMsg.Id, out var shouldbe)) return default;
+
+
         if (!(editMsg.Guild?.ActiveThreads.TryGetValue(editMsg.ChannelId, out var thread) ?? false)) return default;
 
 
@@ -142,10 +147,10 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         }
 
 
-    BAD_MESSAGE:
+        BAD_MESSAGE:
         return default;
 
-    GOOD_MESSAGE:
+        GOOD_MESSAGE:
         editMsg.AddReactionAsync(State.GoodCheck).Wait();
         editMsg.DeleteAllReactionsForEmojiAsync(State.BadCheck).Wait();
         if (editMsg.Channel != null) editMsg.Channel.DeleteMessageAsync(shouldbe.fixItMsg).Wait();
@@ -163,6 +168,10 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         // channel not a thread
         if (!(message.Guild?.ActiveThreads.TryGetValue(message.ChannelId, out var thread) ?? false)) return default;
         // thread not in mantras
+        var usersInThread = thread.GetUsersAsync().ToBlockingEnumerable().ToArray();
+        var myId = State.GetMyBotUserIdInThisGuild(message);
+        if (myId == null) return default;
+        if (usersInThread.All(x => x.Id != myId)) return default;
 
         if (thread.Name == State.BondedChannel)
         {
@@ -174,25 +183,32 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
             goto BAD_MESSAGE;
         }
 
+        if (thread.Name == State.XXXXIsGoodForXXXX)
+        {
+            if (State.IsValidXXXXIsGoodForXXXXMantra(message.Content))
+            {
+                goto GOOD_MESSAGE;
+            }
+        }
+
         if (thread.Name.ToLowerInvariant() == message.Content.ToLowerInvariant())
         {
             goto GOOD_MESSAGE;
         }
 
-        if (message.Content.Contains("@"))
+        if (!message.Content.Contains("@"))
         {
-            goto IGNORE_MESSAGE;
+            goto BAD_MESSAGE;
         }
 
-        goto BAD_MESSAGE;
+        goto IGNORE_MESSAGE;
 
 
-    GOOD_MESSAGE:
-        State.GoodMantras += 1;
+        GOOD_MESSAGE:
         message.AddReactionAsync(new ReactionEmojiProperties(State.GoodCheck)).Wait();
         return default;
 
-    BAD_MESSAGE:
+        BAD_MESSAGE:
         var setMessage = message
             .ReplyAsync($"<@{message.Author.Id}> Error in mantra.\n" +
                         $"`COMMAND:` Edit message to make correction.\n**Comply And Obey**");
@@ -211,9 +227,8 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         return default;
 
 
-    IGNORE_MESSAGE:
+        IGNORE_MESSAGE:
 
         return default;
     }
-
 }

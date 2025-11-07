@@ -2,11 +2,13 @@
 
 [Unit]
 Description=My discord bot for doing mantras
-After=multi-user.target
+After=network.target
 
 [Service]
 Type=idle
 ExecStart=/home/hailey/Discord_MantraBot/start.sh
+Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
