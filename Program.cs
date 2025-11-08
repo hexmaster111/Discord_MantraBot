@@ -106,6 +106,8 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         var rand = Random.Shared.Next() % mantras.Count;
         var mantra = mantras[rand];
 
+
+        // todo:  add something like "say it:" "admit" "acknolage" to the start of each mantra
         var msgSend = rc.SendMessageAsync(msg.ChannelId, new MessageProperties()
         {
             Content = mantra,
