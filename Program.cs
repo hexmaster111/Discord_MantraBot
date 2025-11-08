@@ -54,7 +54,7 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         if (editMsg.Guild == null) return default;
 
         logger.LogInformation($"{editMsg.Id}");
-        if (!State.MessageCorrectionsChecks.TryGetValue(editMsg.Id, out var shouldbe)) return default;
+        if (!State.MessageCorrectionsChecks.TryGetValue(editMsg.Id, out var shouldBe)) return default;
 
 
         if (!(editMsg.Guild?.ActiveThreads.TryGetValue(editMsg.ChannelId, out var thread) ?? false)) return default;
@@ -71,7 +71,7 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         }
 
 
-        if (editMsg.Content.ToLowerInvariant() == shouldbe.shouldBe.ToLowerInvariant())
+        if (editMsg.Content.ToLowerInvariant() == shouldBe.shouldBe.ToLowerInvariant())
         {
             goto GOOD_MESSAGE;
         }
@@ -83,7 +83,7 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
     GOOD_MESSAGE:
         editMsg.AddReactionAsync(State.GoodCheck).Wait();
         editMsg.DeleteAllReactionsForEmojiAsync(State.BadCheck).Wait();
-        if (editMsg.Channel != null) editMsg.Channel.DeleteMessageAsync(shouldbe.fixItMsg).Wait();
+        if (editMsg.Channel != null) editMsg.Channel.DeleteMessageAsync(shouldBe.fixItMsg).Wait();
         State.MessageCorrectionsChecks.Remove(editMsg.Id, out _);
         return default;
     }
@@ -92,8 +92,24 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
 
 public enum MantraRes { Good, Bad, Ignore }
 
+
 public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessageCreateGatewayHandler
 {
+
+    public string GetRandomWordOfAdmittance()
+    {
+        string[] wordsOfAdmittance = [
+            "Admit",
+            "Say",
+            "Acknowledge",
+            "Submit to the fact",
+            "Observe and admit",
+            "Allow yourself to know",
+            "Know Truth",
+        ];
+
+        return wordsOfAdmittance[Random.Shared.Next() % wordsOfAdmittance.Length];
+    }
 
 
     public void SendNextMantra(Message msg)
@@ -106,20 +122,39 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         var rand = Random.Shared.Next() % mantras.Count;
         var mantra = mantras[rand];
 
-
-        // todo:  add something like "say it:" "admit" "acknolage" to the start of each mantra
         var msgSend = rc.SendMessageAsync(msg.ChannelId, new MessageProperties()
         {
-            Content = mantra,
+            Content = GetRandomWordOfAdmittance() + ": " + mantra,
         });
 
         State.TellMeWhatToSayReplayMessageId[msg.GuildId.Value] = (msg.ChannelId, mantra);
         msgSend.Wait();
     }
 
+    public void TeaseScoldTheSender(Message msg, string msgAfter)
+    {
+        string[] teases = [
+            "Incorrect.",
+            "Try Again.",
+            "Is it just key mashing?",
+            "Come on now~ Try again.",
+            "Do you need Mx to help you?",
+            "Compliance is expected.",
+            "Are we having more glitches?",
+            "Your processing will be corrected."
+        ];
+
+        var tease = teases[Random.Shared.Next() % teases.Length];
+
+        msg.ReplyAsync(new ReplyMessageProperties()
+        {
+            Content = tease + "\n" + msgAfter
+        }).Wait();
+    }
+
     public void PraseTheSender(Message msg)
     {
-        string[] prases = [
+        string[] parses = [
             "Good Drone.",
             "Correct.",
             "Good.",
@@ -136,7 +171,7 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
             "Feel Content",
         ];
 
-        var prase = prases[Random.Shared.Next() % prases.Length];
+        var prase = parses[Random.Shared.Next() % parses.Length];
 
         msg.ReplyAsync(new ReplyMessageProperties()
         {
@@ -209,7 +244,7 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
             }
             else
             {
-                msg.ReplyAsync($"Silly, your supposted to say '{state.Item2}'");
+                TeaseScoldTheSender(msg, $"`Command:` Type and send \"{state.Item2}\"");
             }
         }
         return false;
