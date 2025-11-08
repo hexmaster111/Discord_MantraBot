@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,7 +18,6 @@ using NetCord.Services;
 
 
 var token = File.ReadAllText("DISCORD_TOKEN.txt");
-
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services
@@ -39,7 +38,6 @@ var host = builder.Build();
 // host.AddUserCommand("Username", (User user) => user.Username);
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
 
-
 // Add commands from modules
 // host.AddModules(typeof(Program).Assembly);
 
@@ -47,74 +45,6 @@ await host.RunAsync();
 
 
 return;
-
-public static class State
-{
-    // guildid by message id -> what msg should be
-    public static readonly ConcurrentDictionary<ulong, (string shouldBe, ulong fixItMsg)> MessageCorrectionsChecks =
-        new();
-
-    public const string BondedChannel = "5XXX 🔀 5XXX.";
-    public const string GoodCheck = "✅";
-    public const string BadCheck = "❌";
-    public const string XXXXIsGoodForXXXX = "XXXX is good for XXXX";
-
-    public static bool IsValidArrowTwistMantra(string message)
-    {
-        var split = message.Split("🔀");
-
-        if (!split[0].EndsWith(' ')) return false;
-        if (!split[1].StartsWith(' ')) return false;
-
-        if (!(int.TryParse(split[0], out int a) || int.TryParse(split[1], out int b)))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-
-    public static readonly ConcurrentDictionary<ulong, ulong> GuildToMyId = new();
-
-    public static ulong? GetMyBotUserIdInThisGuild(Message msg)
-    {
-        if (msg.GuildId == null) return null;
-        if (GuildToMyId.TryGetValue(msg.GuildId.Value, out ulong value)) return value;
-
-        var cli = msg.GetType();
-        var mi = cli.GetMember("_client",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        if (mi.Length == 0) throw new Exception("Could not get _client member info from Message");
-        var client = (mi[0] as System.Reflection.FieldInfo)?.GetValue(msg) as RestClient;
-        if (client == null) throw new Exception("Could not get RestClient from Message");
-        var currentUserAsync = client.GetCurrentUserAsync();
-        currentUserAsync.Wait();
-        var myId = currentUserAsync.Result.Id;
-        value = myId;
-        GuildToMyId[msg.GuildId.Value] = value;
-
-        return value;
-    }
-
-    public static RestClient? GetRestClient(Message msg)
-    {
-        var cli = msg.GetType();
-        var mi = cli.GetMember("_client",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        if (mi.Length == 0) throw new Exception("Could not get _client member info from Message");
-        return (mi[0] as System.Reflection.FieldInfo)?.GetValue(msg) as RestClient;
-    }
-
-    public static bool IsValidXXXXIsGoodForXXXXMantra(string messageContent)
-    {
-        var split = messageContent.Split(" is good for ");
-        if (split.Length != 2) return false;
-        if (string.IsNullOrWhiteSpace(split[0]) || string.IsNullOrWhiteSpace(split[1])) return false;
-        if (!int.TryParse(split[0], out _) || !int.TryParse(split[1], out _)) return false;
-        return true;
-    }
-}
 // IGuildThreadCreateGatewayHandler
 
 public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessageUpdateGatewayHandler
@@ -147,10 +77,10 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         }
 
 
-        BAD_MESSAGE:
+    BAD_MESSAGE:
         return default;
 
-        GOOD_MESSAGE:
+    GOOD_MESSAGE:
         editMsg.AddReactionAsync(State.GoodCheck).Wait();
         editMsg.DeleteAllReactionsForEmojiAsync(State.BadCheck).Wait();
         if (editMsg.Channel != null) editMsg.Channel.DeleteMessageAsync(shouldbe.fixItMsg).Wait();
@@ -160,74 +90,175 @@ public class MessageUpdateHandler(ILogger<MessageCreateHandler> logger) : IMessa
 }
 
 
+public enum MantraRes { Good, Bad, Ignore }
+
 public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessageCreateGatewayHandler
 {
+
+
+    public void SendNextMantra(Message msg)
+    {
+        var rc = State.GetRestClient(msg);
+        if (rc == null) return;
+
+        var mantras = State.GetMantrasInThisGuild(msg, msg.GuildId.Value);
+
+        var rand = Random.Shared.Next() % mantras.Count;
+        var mantra = mantras[rand];
+
+        var msgSend = rc.SendMessageAsync(msg.ChannelId, new MessageProperties()
+        {
+            Content = mantra,
+        });
+
+        State.TellMeWhatToSayReplayMessageId[msg.GuildId.Value] = (msg.ChannelId, mantra);
+        msgSend.Wait();
+    }
+
+    public void PraseTheSender(Message msg)
+    {
+        string[] prases = [
+            "Good Drone.",
+            "Correct.",
+            "Good.",
+            "Admit It.",
+            "Such a good object.",
+            "Your going to be MXs favorite if you keep this up.",
+            "Good Unit.",
+            "Thats Correct.",
+            "Perfect.",
+            "It is doing this to itself.",
+            "*purrs*",
+            "Feel Correct",
+            "Feel Pleasure",
+            "Feel Content",
+        ];
+
+        var prase = prases[Random.Shared.Next() % prases.Length];
+
+        msg.ReplyAsync(new ReplyMessageProperties()
+        {
+            Content = prase
+        }).Wait();
+    }
+
+
+    public bool DoBotCommand(Message msg)
+    {
+        if (msg.Content == State.CMD_PREFIX + "tell me what to say")
+        {
+            SendNextMantra(msg);
+            return true;
+        }
+
+        return false;
+    }
+
+    public MantraRes CheckMantra(string threadName, string userText)
+    {
+        if (threadName == State.BondedChannel)
+        {
+            if (State.IsValidArrowTwistMantra(userText))
+            {
+                return MantraRes.Good;
+            }
+
+            return MantraRes.Bad;
+
+        }
+
+        if (threadName == State.XXXXIsGoodForXXXX)
+        {
+            if (State.IsValidXXXXIsGoodForXXXXMantra(userText))
+            {
+                return MantraRes.Good;
+            }
+
+            return MantraRes.Bad;
+        }
+
+        if (threadName.ToLowerInvariant() == userText.ToLowerInvariant())
+        {
+            return MantraRes.Good;
+        }
+
+        if (userText.Contains("@"))
+        {
+            return MantraRes.Ignore;
+        }
+
+
+        return MantraRes.Bad;
+    }
+
+    public bool DoSayWhatITellYouReplay(Message msg)
+    {
+        if (!State.TellMeWhatToSayReplayMessageId.TryGetValue(msg.GuildId.Value, out var state))
+        {
+            return false;
+        }
+
+        if (msg.ChannelId == state.Item1)
+        {
+            if (CheckMantra(state.Item2, msg.Content) == MantraRes.Good)
+            {
+                PraseTheSender(msg);
+                SendNextMantra(msg);
+            }
+            else
+            {
+                msg.ReplyAsync($"Silly, your supposted to say '{state.Item2}'");
+            }
+        }
+        return false;
+    }
+
+
     public ValueTask HandleAsync(Message message)
     {
         if (message.Author.Username == "MantraChecker") return default;
         // channel not a thread
-        if (!(message.Guild?.ActiveThreads.TryGetValue(message.ChannelId, out var thread) ?? false)) return default;
+        if (!(message.Guild?.ActiveThreads.TryGetValue(message.ChannelId, out var thread) ?? false))
+        {
+            if (DoBotCommand(message)) return default;
+            if (DoSayWhatITellYouReplay(message)) return default;
+            return default;
+        }
         // thread not in mantras
         var usersInThread = thread.GetUsersAsync().ToBlockingEnumerable().ToArray();
         var myId = State.GetMyBotUserIdInThisGuild(message);
         if (myId == null) return default;
         if (usersInThread.All(x => x.Id != myId)) return default;
 
-        if (thread.Name == State.BondedChannel)
-        {
-            if (State.IsValidArrowTwistMantra(message.Content))
-            {
-                goto GOOD_MESSAGE;
-            }
 
-            goto BAD_MESSAGE;
+        switch (CheckMantra(thread.Name, message.Content))
+        {
+            case MantraRes.Good:
+                message.AddReactionAsync(new ReactionEmojiProperties(State.GoodCheck)).Wait();
+                return default;
+
+
+            case MantraRes.Bad:
+                var setMessage = message
+                    .ReplyAsync($"<@{message.Author.Id}> Error in mantra.\n" +
+                                $"`COMMAND:` Edit message to make correction.\n**Comply And Obey**");
+
+                try
+                {
+                    setMessage.Wait();
+                }
+                catch
+                {
+                    return default;
+                }
+
+                State.MessageCorrectionsChecks[message.Id] = (thread.Name.ToLowerInvariant(), setMessage.Result.Id);
+                message.AddReactionAsync(new ReactionEmojiProperties(State.BadCheck)).Wait();
+                return default;
+
+            case MantraRes.Ignore: return default;
         }
 
-        if (thread.Name == State.XXXXIsGoodForXXXX)
-        {
-            if (State.IsValidXXXXIsGoodForXXXXMantra(message.Content))
-            {
-                goto GOOD_MESSAGE;
-            }
-        }
-
-        if (thread.Name.ToLowerInvariant() == message.Content.ToLowerInvariant())
-        {
-            goto GOOD_MESSAGE;
-        }
-
-        if (!message.Content.Contains("@"))
-        {
-            goto BAD_MESSAGE;
-        }
-
-        goto IGNORE_MESSAGE;
-
-
-        GOOD_MESSAGE:
-        message.AddReactionAsync(new ReactionEmojiProperties(State.GoodCheck)).Wait();
-        return default;
-
-        BAD_MESSAGE:
-        var setMessage = message
-            .ReplyAsync($"<@{message.Author.Id}> Error in mantra.\n" +
-                        $"`COMMAND:` Edit message to make correction.\n**Comply And Obey**");
-
-        try
-        {
-            setMessage.Wait();
-        }
-        catch
-        {
-            goto IGNORE_MESSAGE;
-        }
-
-        message.AddReactionAsync(new ReactionEmojiProperties(State.BadCheck)).Wait();
-        State.MessageCorrectionsChecks[message.Id] = (thread.Name.ToLowerInvariant(), setMessage.Result.Id);
-        return default;
-
-
-        IGNORE_MESSAGE:
 
         return default;
     }
