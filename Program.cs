@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NetCord;
 using NetCord.Gateway;
 using NetCord.Hosting.Gateway;
 using NetCord.Hosting.Services;
@@ -39,7 +38,8 @@ var host = builder.Build();
 // host.AddMessageCommand("Length", (RestMessage message) => message.Content.Length.ToString());
 
 // Add commands from modules
-// host.AddModules(typeof(Program).Assembly);
+host.AddModules(typeof(Program).Assembly);
+
 
 await host.RunAsync();
 
@@ -300,3 +300,4 @@ public class MessageCreateHandler(ILogger<MessageCreateHandler> logger) : IMessa
         return default;
     }
 }
+
