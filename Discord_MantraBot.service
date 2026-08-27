@@ -6,7 +6,7 @@ After=network.target
 
 [Service]
 Type=idle
-ExecStart=/home/hailey/Discord_MantraBot/start.sh
+ExecStart=/home/hailey/projects/Discord_MantraBot/start.sh
 Restart=always
 RestartSec=3
 
